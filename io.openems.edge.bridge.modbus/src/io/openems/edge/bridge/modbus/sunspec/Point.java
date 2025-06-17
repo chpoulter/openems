@@ -64,6 +64,13 @@ public abstract sealed class Point {
 		 * @return true for defined values
 		 */
 		public boolean isDefined(Object value);
+
+		/**
+		 * Returns the length of this type.
+		 *
+		 * @return the length
+		 */
+		public int getLength();
 	}
 
 	public final String name;
@@ -156,6 +163,11 @@ public abstract sealed class Point {
 					!"".equals(value);
 				case EUI48 -> false; // TODO not implemented
 				};
+			}
+
+			@Override
+			public int getLength() {
+				return this.length;
 			}
 		}
 
@@ -257,6 +269,11 @@ public abstract sealed class Point {
 				case SUNSSF -> !value.equals(UNDEFINED_8);
 				};
 			}
+
+			@Override
+			public int getLength() {
+				return this.length;
+			}
 		}
 
 		public ScaleFactorPoint(String name, String label, String description) {
@@ -290,6 +307,11 @@ public abstract sealed class Point {
 				case ENUM16 -> !value.equals(UNDEFINED_16);
 				case ENUM32 -> !value.equals(UNDEFINED_32);
 				};
+			}
+
+			@Override
+			public int getLength() {
+				return this.length;
 			}
 		}
 
@@ -338,6 +360,11 @@ public abstract sealed class Point {
 				case BITFIELD16 -> !value.equals(UNDEFINED_16);
 				case BITFIELD32 -> !value.equals(UNDEFINED_32);
 				};
+			}
+
+			@Override
+			public int getLength() {
+				return this.length;
 			}
 		}
 
