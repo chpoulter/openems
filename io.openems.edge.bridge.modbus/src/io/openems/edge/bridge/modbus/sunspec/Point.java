@@ -389,6 +389,11 @@ public abstract sealed class Point {
 				case ENUMFIELD32 -> !value.equals(UNDEFINED_32);
 				};
 			}
+
+			@Override
+			public int getLength() {
+				return this.length;
+			}
 		}
 
 		public final SunSpecEnumPoint[] points;
