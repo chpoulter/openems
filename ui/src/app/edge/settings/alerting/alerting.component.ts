@@ -1,15 +1,26 @@
 // @ts-strict-ignore
-import { Component, OnInit } from "@angular/core";
-import { FormBuilder, FormControl, FormGroup } from "@angular/forms";
+import { Component, OnDestroy, OnInit } from "@angular/core";
+import { FormBuilder, FormControl, FormGroup, Validators } from "@angular/forms";
 import { ActivatedRoute } from "@angular/router";
-import { FormlyFieldConfig, FormlyFormOptions } from "@ngx-formly/core";
+import { FormlyFieldConfig, FormlyFormOptions, FormlyModule } from "@ngx-formly/core";
 import { TranslateService } from "@ngx-translate/core";
+import { NgxSpinnerModule } from "ngx-spinner";
+import { Subscription } from "rxjs";
+import tr from "src/app/edge/settings/alerting/shared/translation.json";
+import { HelpButtonComponent } from "src/app/shared/components/modal/help-button/help-button";
 import { GetUserAlertingConfigsRequest } from "src/app/shared/jsonrpc/request/getUserAlertingConfigsRequest";
 import { SetUserAlertingConfigsRequest, UserSettingRequest } from "src/app/shared/jsonrpc/request/setUserAlertingConfigsRequest";
 import { AlertingSettingResponse, GetUserAlertingConfigsResponse } from "src/app/shared/jsonrpc/response/getUserAlertingConfigsResponse";
 import { User } from "src/app/shared/jsonrpc/shared";
+import { LocaleProvider } from "src/app/shared/provider/locale-provider";
 import { Edge, Service, Utils, Websocket } from "src/app/shared/shared";
+import { Language } from "src/app/shared/type/language";
+import { Role } from "src/app/shared/type/role";
+import { Icon } from "src/app/shared/type/widget";
 import { ArrayUtils } from "src/app/shared/utils/array/array.utils";
+import { FormUtils } from "src/app/shared/utils/form/form.utils";
+import { CommonUiModule } from "../../../shared/common-ui.module";
+import { currentUserRows, otherUserRows } from "./formly/formly-alerting-configs";
 
 export enum AlertingType {
   OFFLINE,
@@ -17,17 +28,25 @@ export enum AlertingType {
   WARNING,
 }
 
-type DefaultValues = { [K in AlertingType]: Delay[]; };
-type Delay = { value: number, label: string };
+export type DefaultValues = { [K in AlertingType]: Delay[]; };
+export type Delay = { value: number, label: string };
+
 type AlertingSetting = AlertingSettingResponse;
 type DetailedAlertingSetting = AlertingSetting & { isOfflineActive: boolean, isFaultActive: boolean, isWarningActive: boolean };
 
 @Component({
   selector: AlertingComponent.SELECTOR,
   templateUrl: "./alerting.component.html",
-  standalone: false,
+  standalone: true,
+  imports: [
+    CommonUiModule,
+    LocaleProvider,
+    HelpButtonComponent,
+    NgxSpinnerModule,
+    FormlyModule,
+  ],
 })
-export class AlertingComponent implements OnInit {
+export class AlertingComponent implements OnInit, OnDestroy {
   protected static readonly SELECTOR = "alerting";
   private static readonly NO_ALERTING: number = 0;
   public readonly spinnerId: string = AlertingComponent.SELECTOR;
@@ -45,9 +64,11 @@ export class AlertingComponent implements OnInit {
 
   protected currentUserInformation: DetailedAlertingSetting;
   protected currentUserForm: { formGroup: FormGroup, model: any, fields: FormlyFieldConfig[], options: FormlyFormOptions };
+  protected otherUserForm: { formGroup: FormGroup, model: any, fields: FormlyFieldConfig[], options: FormlyFormOptions };
 
   protected otherUserInformation: AlertingSetting[];
-  protected otherUserForm: FormGroup;
+
+  private subscriptions: Subscription = new Subscription();
 
   public constructor(
     private route: ActivatedRoute,
@@ -56,9 +77,38 @@ export class AlertingComponent implements OnInit {
     private service: Service,
     private translate: TranslateService,
     public formBuilder: FormBuilder,
-  ) { }
+  ) {
+    Language.setAdditionalTranslationFile(tr, translate).then(({ lang, translations, shouldMerge }) => {
+      translate.setTranslation(lang, translations, shouldMerge);
+    });
+  }
+
+  /**
+   * Checks if form is valid
+   *
+   * @param formGroup the formGroup
+   * @returns true, if controls are valid, else false
+   */
+  public static isFormValid(formGroup: FormGroup): boolean {
+    const isFaultAlerting = FormUtils.findFormControlsValueSafely<boolean>(formGroup, "fault-toggle");
+    const isOfflineAlerting = FormUtils.findFormControlsValueSafely<boolean>(formGroup, "offline-toggle");
+
+    const isOfflineCheckboxChecked = FormUtils.findFormControlSafely(formGroup, "offline-checkbox");
+    isOfflineCheckboxChecked.setValidators(Validators.requiredTrue);
+    isOfflineCheckboxChecked.updateValueAndValidity();
+
+    const isFaultCheckboxChecked = FormUtils.findFormControlSafely(formGroup, "fault-checkbox");
+    isFaultCheckboxChecked.setValidators(Validators.requiredTrue);
+    isFaultCheckboxChecked.updateValueAndValidity();
+
+    const faultInvalid = isFaultAlerting && isFaultCheckboxChecked.invalid;
+    const offlineInvalid = isOfflineAlerting && isOfflineCheckboxChecked.invalid;
+
+    return !(faultInvalid || offlineInvalid);
+  }
 
   public ngOnInit(): void {
+    this.service.startSpinner(this.spinnerId);
     this.service.getCurrentEdge().then(edge => {
       this.edge = edge;
 
@@ -73,14 +123,19 @@ export class AlertingComponent implements OnInit {
 
         this.setupCurrentUser(result.currentUserSettings);
         this.setupOtherUsers(result.otherUsersSettings);
+        this.service.stopSpinner(this.spinnerId);
       }).catch(error => {
         this.error = error.error;
       });
     });
   }
 
+  ngOnDestroy() {
+    this.subscriptions.unsubscribe();
+  }
+
   /**
- * get if given delay is valid
+   * get if given delay is valid
  */
   protected isValidDelay(type: AlertingType, delay: number): boolean {
     if (delay <= 0) {
@@ -98,22 +153,22 @@ export class AlertingComponent implements OnInit {
  */
   protected getLabelToDelay(delay: number): string {
     if (delay <= 0) {
-      return this.translate.instant("Edge.Config.ALERTING.DEACTIVATED");
+      return this.translate.instant("EDGE.CONFIG.ALERTING.DEACTIVATED");
     }
     if (delay >= 1440) {
       delay = delay / 1440;
       return delay + " " + (delay == 1
-        ? this.translate.instant("General.TIME.DAY")
-        : this.translate.instant("General.TIME.DAYS"));
+        ? this.translate.instant("GENERAL.TIME.DAY")
+        : this.translate.instant("GENERAL.TIME.DAYS"));
     } else if (delay >= 60) {
       delay = delay / 60;
       return delay + " " + (delay == 1
-        ? this.translate.instant("General.TIME.HOUR")
-        : this.translate.instant("General.TIME.HOURS"));
+        ? this.translate.instant("GENERAL.TIME.HOUR")
+        : this.translate.instant("GENERAL.TIME.HOURS"));
     } else {
       return delay + " " + (delay == 1
-        ? this.translate.instant("General.TIME.MINUTE")
-        : this.translate.instant("General.TIME.MINUTES"));
+        ? this.translate.instant("GENERAL.TIME.MINUTE")
+        : this.translate.instant("GENERAL.TIME.MINUTES"));
     }
   }
 
@@ -123,46 +178,49 @@ export class AlertingComponent implements OnInit {
     const dirtyformGroups: FormGroup<any>[] = [];
     const changedUserSettings: UserSettingRequest[] = [];
 
+    // current user form
     if (this.currentUserForm.formGroup.dirty) {
       const formGroup = this.currentUserForm.formGroup;
       dirtyformGroups.push(formGroup);
+      const isFormValid = AlertingComponent.isFormValid(formGroup);
 
-      const offlineEdgeDelay = formGroup.controls["isOfflineActive"].value ?
-        formGroup.controls["offlineEdgeDelay"].value : 0;
-      const faultEdgeDelay = this.currentUserInformation.isFaultActive ?
-        this.currentUserInformation.faultEdgeDelay : 0;
-      const warningEdgeDelay = this.currentUserInformation.isWarningActive ?
-        this.currentUserInformation.warningEdgeDelay : 0;
+      if (!isFormValid) {
+        formGroup.markAllAsTouched();
+        this.service.toast("Please check the mail option", "warning");
+        return;
+      }
 
       changedUserSettings.push({
         userLogin: this.currentUserInformation.userLogin,
-        offlineEdgeDelay: offlineEdgeDelay,
-        warningEdgeDelay: warningEdgeDelay,
-        faultEdgeDelay: faultEdgeDelay,
+        ...this.getDelays(formGroup),
       });
     }
 
+    // other users form
     const userOptions: AlertingSetting[] = [];
     if (this.otherUserInformation) {
-      if (this.otherUserForm.dirty) {
-        dirtyformGroups.push(this.otherUserForm);
+      if (this.otherUserForm.formGroup.dirty) {
+        dirtyformGroups.push(this.otherUserForm.formGroup);
 
         for (const user of this.otherUserInformation) {
-          const control = this.otherUserForm.controls[user.userLogin];
-          if (control.dirty) {
-            const offlineEdgeDelay = control.value["offlineEdgeDelay"];
-            const faultEdgeDelay = control.value["faultEdgeDelay"];
-            const warningEdgeDelay = control.value["warningEdgeDelay"];
-            const isActivated = control.value["isOfflineActive"];
+          const formGroup = this.otherUserForm.formGroup.controls[user.userLogin] as FormGroup;
 
-            changedUserSettings.push({
-              userLogin: user.userLogin,
-              offlineEdgeDelay: isActivated ? offlineEdgeDelay : 0,
-              warningEdgeDelay: warningEdgeDelay,
-              faultEdgeDelay: faultEdgeDelay,
-            });
-            userOptions.push(user);
+          if (formGroup.pristine) {
+            continue;
           }
+
+          const isFormValid = AlertingComponent.isFormValid(formGroup);
+          if (!isFormValid) {
+            formGroup.markAllAsTouched();
+            this.service.toast("Please check all required fields", "warning");
+            return;
+          }
+
+          changedUserSettings.push({
+            userLogin: user.userLogin,
+            ...this.getDelays(formGroup),
+          });
+          userOptions.push(user);
         }
       }
     }
@@ -179,47 +237,39 @@ export class AlertingComponent implements OnInit {
     if (this.error || !this.currentUserForm) {
       return false;
     }
-    return this.currentUserForm?.formGroup?.dirty || this.otherUserForm?.dirty;
+    return this.currentUserForm?.formGroup?.dirty || this.otherUserForm.formGroup?.dirty;
   }
 
   private setupCurrentUser(response: AlertingSettingResponse) {
     this.currentUserInformation = this.asDetailedSettings(response);
-    this.currentUserForm = this.generateForm(this.currentUserInformation);
+    this.currentUserForm = this.generateForm(this.currentUserInformation, this.edge.role);
   }
 
-  private generateForm(settings: DetailedAlertingSetting): { formGroup: FormGroup, model: any, fields: FormlyFieldConfig[], options: any } {
+  private generateForm(settings: DetailedAlertingSetting, edgeRole: Role): { formGroup: FormGroup, model: any, fields: FormlyFieldConfig[], options: any, } {
     const delays: Delay[] = this.defaultValues[AlertingType.OFFLINE];
+
     if (!this.isValidDelay(AlertingType.OFFLINE, settings.offlineEdgeDelay)) {
       delays.push({ value: settings.offlineEdgeDelay, label: this.getLabelToDelay(settings.offlineEdgeDelay) });
     }
+
     return {
-      formGroup: new FormGroup({}),
-      options: {
-        formState: {
-          awesomeIsForced: false,
-        },
-      },
-      model: {
-        isOfflineActive: settings.isOfflineActive,
-        offlineEdgeDelay: settings.offlineEdgeDelay,
-      },
+      formGroup: new FormGroup({
+        "offline-toggle": new FormControl(settings.isOfflineActive, Validators.required),
+        "offline-delay-selection": new FormControl(settings.offlineEdgeDelay, Validators.required),
+        "offline-checkbox": new FormControl(settings.isOfflineActive, Validators.requiredTrue),
+        "fault-toggle": new FormControl(settings.isFaultActive, Validators.required),
+        "fault-delay-selection": new FormControl(settings.faultEdgeDelay, Validators.required),
+        "fault-checkbox": new FormControl(settings.isFaultActive, Validators.requiredTrue),
+      }),
+      options: {},
+      model: {},
       fields: [{
-        key: "isOfflineActive",
-        type: "checkbox",
+        key: "currentUser",
+        type: "input",
         templateOptions: {
-          label: this.translate.instant("Edge.Config.ALERTING.ACTIVATE"),
+          options: currentUserRows(this.defaultValues, this.translate, edgeRole),
         },
-      },
-      {
-        key: "offlineEdgeDelay",
-        type: "radio",
-        templateOptions: {
-          label: this.translate.instant("Edge.Config.ALERTING.DELAY"),
-          type: "number",
-          required: true,
-          options: delays,
-        },
-        hideExpression: model => !model.isOfflineActive,
+        wrappers: ["formly-current-user-alerting"],
       },
       ],
     };
@@ -230,29 +280,46 @@ export class AlertingComponent implements OnInit {
       return;
     }
 
+    const formGroup = new FormGroup({});
     this.otherUserInformation = [];
-    this.otherUserForm = new FormGroup({});
 
     const sorted = ArrayUtils.sortedAlphabetically(response, e => e.userLogin);
-
     sorted.forEach((r) => {
-      const setting: AlertingSetting = {
+
+      const setting: AlertingSettingResponse = {
         userLogin: r.userLogin,
-        offlineEdgeDelay: r.offlineEdgeDelay,
-        faultEdgeDelay: r.faultEdgeDelay,
-        warningEdgeDelay: r.warningEdgeDelay,
+        offlineEdgeDelay: this.getValueOrDefault(r, AlertingType.OFFLINE),
+        faultEdgeDelay: this.getValueOrDefault(r, AlertingType.FAULT),
+        warningEdgeDelay: this.getValueOrDefault(r, AlertingType.WARNING),
       };
 
       this.otherUserInformation.push(setting);
 
-      this.otherUserForm.addControl(setting.userLogin, //
+      formGroup.addControl(setting.userLogin, //
         this.formBuilder.group({
-          isOfflineActive: new FormControl(setting.offlineEdgeDelay > 0),
-          offlineEdgeDelay: new FormControl(this.getValueOrDefault(setting, AlertingType.OFFLINE)),
-          faultEdgeDelay: new FormControl(setting.faultEdgeDelay),
-          warningEdgeDelay: new FormControl(setting.warningEdgeDelay),
+          "offline-toggle": new FormControl(r.offlineEdgeDelay > 0, Validators.required),
+          "offline-delay-selection": new FormControl(setting.offlineEdgeDelay, Validators.required),
+          "offline-checkbox": new FormControl(r.offlineEdgeDelay > 0, Validators.requiredTrue),
+          "fault-toggle": new FormControl(r.faultEdgeDelay > 0, Validators.required),
+          "fault-delay-selection": new FormControl(setting.faultEdgeDelay, Validators.required),
+          "fault-checkbox": new FormControl(r.faultEdgeDelay > 0, Validators.requiredTrue),
         }));
     });
+
+    this.otherUserForm = {
+      formGroup: formGroup,
+      options: {},
+      model: {},
+      fields: [{
+        key: "otherUsers",
+        type: "input",
+        props: {
+          options: otherUserRows(response, this.defaultValues, this.translate),
+        },
+        wrappers: ["formly-other-users-alerting"],
+      },
+      ],
+    };
   }
 
   private getValue(setting: AlertingSetting, type: AlertingType): number {
@@ -300,14 +367,14 @@ export class AlertingComponent implements OnInit {
   private sendRequestAndUpdate(request: GetUserAlertingConfigsRequest | SetUserAlertingConfigsRequest, formGroup: FormGroup<any>[]) {
     this.sendRequest(request)
       .then(() => {
-        this.service.toast(this.translate.instant("General.changeAccepted"), "success");
+        this.service.toast(this.translate.instant("GENERAL.CHANGE_ACCEPTED"), "success");
         for (const group of formGroup.values()) {
           group.markAsPristine();
         }
       })
       .catch((response) => {
         const error = response.error;
-        this.errorToast(this.translate.instant("General.changeFailed"), error.message);
+        this.errorToast(this.translate.instant("GENERAL.CHANGE_FAILED"), error.message);
       });
   }
 
@@ -323,7 +390,7 @@ export class AlertingComponent implements OnInit {
         resolve(response as GetUserAlertingConfigsResponse);
       }).catch(reason => {
         const error = reason.error;
-        this.errorToast(this.translate.instant("Edge.Config.ALERTING.TOAST.ERROR"), error.message);
+        this.errorToast(this.translate.instant("EDGE.CONFIG.ALERTING.TOAST.ERROR"), error.message);
         reject(reason);
       }).finally(() => {
         this.service.stopSpinner(this.spinnerId);
@@ -335,4 +402,41 @@ export class AlertingComponent implements OnInit {
     this.service.toast("[ " + errorType + " ]<br/>" + errorMsg, "danger");
   }
 
+  private getDelays(formGroup: FormGroup): Omit<UserSettingRequest, "userLogin"> {
+    const offlineDelay = FormUtils.findFormControlsValueSafely<number>(formGroup, "offline-delay-selection");
+    const isOfflineAlerting = FormUtils.findFormControlsValueSafely<boolean>(formGroup, "offline-toggle");
+    const faultDelay = FormUtils.findFormControlsValueSafely<number>(formGroup, "fault-delay-selection");
+    const isFaultAlerting = FormUtils.findFormControlsValueSafely<boolean>(formGroup, "fault-toggle");
+
+    return {
+      offlineEdgeDelay: isOfflineAlerting ? offlineDelay : 0,
+      warningEdgeDelay: 0,
+      faultEdgeDelay: isFaultAlerting ? faultDelay : 0,
+    };
+  }
+
+
 }
+
+
+export type ToggleFormlyField = {
+  type: "toggle",
+  name: string,
+  formControl: string,
+  icon?: Icon & {
+    position: "start" | "end",
+  }
+};
+
+export type RadioButtonsFormlyField = {
+  type: "radio-buttons",
+  name: string,
+  formControl: string,
+  options: Delay[]
+};
+
+export type CheckboxFormlyField = {
+  type: "checkbox",
+  name: string,
+  formControl: string,
+};

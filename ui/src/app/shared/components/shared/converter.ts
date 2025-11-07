@@ -1,6 +1,7 @@
 // @ts-strict-ignore
 import { TranslateService } from "@ngx-translate/core";
-import { CurrentData, EdgeConfig, GridMode, Utils } from "../../shared";
+import { CurrentData, EdgeConfig, GridMode, Limiter14aRestriction, RippleControlReceiverRestrictionLevel, Utils } from "../../shared";
+import { EnabledDisabledState } from "../../type/general";
 import { TimeUtils } from "../../utils/time/timeutils";
 import { Formatter } from "./formatter";
 
@@ -94,9 +95,37 @@ export namespace Converter {
   };
 
   /**
-   * Formats a Power value as Watt [W].
+  * Formats a apparent power value as Volt-Ampere [VA].
+  *
+  * Value 1000 -> "1.000 VA".
+  * Value null -> "-".
+  *
+  * @param value the power value
+  * @returns formatted value; '-' for null
+  */
+  export const POWER_IN_VOLT_AMPERE: Converter = (raw) => {
+    return IF_NUMBER(raw, value =>
+      Formatter.FORMAT_VOLT_AMPERE(value));
+  };
+
+  /**
+  * Formats a apparent power value as Volt-Ampere [VA].
+  *
+  * Value 1000 -> "1.000 VA".
+  * Value null -> "-".
+  *
+  * @param value the power value
+  * @returns formatted value; '-' for null
+  */
+  export const POWER_IN_VOLT_AMPERE_REACTIVE: Converter = (raw) => {
+    return IF_NUMBER(raw, value =>
+      Formatter.FORMAT_VOLT_AMPERE_REACTIVE(value));
+  };
+
+  /**
+   * Formats a Power value as Watt [kW].
    *
-   * Value 1000 -> "1.000 W".
+   * Value 1000 -> "1 kW".
    * Value null -> "-".
    *
    * @param value the power value
@@ -273,19 +302,31 @@ export namespace Converter {
 
   export const GRID_STATE_TO_MESSAGE = (translate: TranslateService, currentData: CurrentData): string => {
     const gridMode = currentData.allComponents["_sum/GridMode"];
-    const restrictionMode = currentData.allComponents["ctrlEssLimiter14a0/RestrictionMode"];
+    const restrictionMode14a = currentData.allComponents["ctrlEssLimiter14a0/RestrictionMode"] ?? Limiter14aRestriction.NO_RESTRICTION;
+    const restrictionModeRcr = currentData.allComponents["ctrlEssRippleControlReceiver0/RestrictionMode"] ?? RippleControlReceiverRestrictionLevel.NO_RESTRICTION;
     if (gridMode === GridMode.OFF_GRID) {
       return translate.instant("GRID_STATES.OFF_GRID");
     }
-    if (restrictionMode === 1) {
-      return translate.instant("GRID_STATES.RESTRICTION");
+    if (restrictionMode14a) {
+      return translate.instant(restrictionModeRcr !== RippleControlReceiverRestrictionLevel.NO_RESTRICTION
+        ? "GRID_STATES.GRID_LIMITATION"
+        : "GRID_STATES.CONSUMPTION_LIMITATION");
     }
+
+    if (restrictionModeRcr !== RippleControlReceiverRestrictionLevel.NO_RESTRICTION) {
+      return translate.instant("GRID_STATES.FEED_IN_LIMITATION");
+    }
+
     return translate.instant("GRID_STATES.NO_EXTERNAL_LIMITATION");
+  };
+
+  export const RCR_RESTRICTION_LEVEL_TO_MESSAGE = (currentData: CurrentData): string => {
+    return `${currentData.allComponents["ctrlEssRippleControlReceiver0/RestrictionMode"]} %`;
   };
 
   export const ON_OFF = (translate: TranslateService) => {
     return (raw): string => {
-      return translate.instant(raw == 1 ? "General.on" : "General.off");
+      return translate.instant(raw == 1 ? "GENERAL.ON" : "GENERAL.OFF");
     };
   };
 
@@ -293,15 +334,15 @@ export namespace Converter {
     return (raw): string => {
       switch (raw) {
         case -1:
-          return translate.instant("Edge.Index.Widgets.HeatPump.undefined");
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT_PUMP.UNDEFINED");
         case 0:
-          return translate.instant("Edge.Index.Widgets.HeatPump.lock");
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT_PUMP.LOCK");
         case 1:
-          return translate.instant("Edge.Index.Widgets.HeatPump.normalOperationShort");
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT_PUMP.NORMAL_OPERATION_SHORT");
         case 2:
-          return translate.instant("Edge.Index.Widgets.HeatPump.switchOnRecShort");
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT_PUMP.SWITCH_ON_REC_SHORT");
         case 3:
-          return translate.instant("Edge.Index.Widgets.HeatPump.switchOnComShort");
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT_PUMP.SWITCH_ON_COM_SHORT");
       }
     };
   };
@@ -313,4 +354,113 @@ export namespace Converter {
       });
     };
   };
+
+  /**
+   * Converts the runState of the heating element to the tranlsated state
+   *
+   * @param translate the current language to be translated to
+   * @returns converted value
+   */
+  export const CONVERT_HEATING_ELEMENT_RUNSTATE = (translate: TranslateService) => {
+    return (value: any): string => {
+      switch (value) {
+        case 0:
+          return translate.instant("GENERAL.INACTIVE");
+        case 1:
+          return translate.instant("GENERAL.ACTIVE");
+        case 2:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEATINGELEMENT.ACTIVE_FORCED");
+        case 3:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEATINGELEMENT.ACTIVED_FORCED_LIMIT");
+        case 4:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEATINGELEMENT.DONE");
+        case 5:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEATINGELEMENT.UNREACHABLE");
+        case 6:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEATINGELEMENT.CALIBRATION");
+        default:
+          return "";
+      };
+    };
+  };
+
+  /**
+   * Converts Power2Heat-State
+   *
+   * @param translate the current language to be translated to
+   * @returns converted value
+   */
+  export const CONVERT_POWER_2_HEAT_STATE = (translate: TranslateService) => {
+    return (value: any): string => {
+      switch (value) {
+        case 0:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT.HEATING");
+        case 1:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT.TARGET_TEMPERATURE_REACHED");
+        case 2:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT.NO_HEATING");
+        case -1:
+        default:
+          return translate.instant("EDGE.INDEX.WIDGETS.HEAT.NO_HEATING");
+      }
+    };
+  };
+
+  /**
+  * Converts Power2Heat-State
+  *
+  * @param translate the current language to be translated to
+  * @returns converted value
+  */
+  export const CONVERT_ENERIX_CONTROL_STATE = (translate: TranslateService) => {
+    return (value: any): string => {
+      switch (value) {
+        case State.ON:
+          return translate.instant("GENERAL.ON");
+        case State.NO_DISCHARGE:
+          return translate.instant("EDGE.INDEX.WIDGETS.ENERIX_CONTROL.NO_DISCHARGE");
+        case State.FORCE_CHARGE:
+          return translate.instant("EDGE.INDEX.WIDGETS.ENERIX_CONTROL.FORCE_CHARGE");
+        case State.DISCONNECTED:
+          return translate.instant("EDGE.INDEX.WIDGETS.ENERIX_CONTROL.DISCONNECTED");
+        case State.CONNECTED:
+          return translate.instant("EDGE.INDEX.WIDGETS.ENERIX_CONTROL.CONNECTED");
+        default:
+          return translate.instant("GENERAL.OFF");
+      }
+    };
+  };
+
+  export const CONVERT_TO_BAR: Converter = (raw) => {
+    return IF_NUMBER(raw, value =>
+      Formatter.FORMAT_BAR(value));
+  };
+
+  export const CONVERT_TO_ENABLED_DISABLED_STATE: Converter = (raw) => {
+    return IF_NUMBER(raw, value =>
+      EnabledDisabledState[value]);
+  };
+
+  export const CONVERT_TO_HEATING_STATE: Converter = (raw) => {
+    return IF_NUMBER(raw, value =>
+      EnabledDisabledState[value]);
+  };
+
+  export const CONVERT_TO_HOUR: Converter = (raw) => {
+    return IF_NUMBER(raw, value =>
+      Formatter.FORMAT_HOUR(value));
+  };
+
+  export const CONVERT_MINUTE_TO_TIME_OF_DAY = (translate: TranslateService, locale: string): Converter => {
+    return TimeUtils.CONVERT_MINUTE_TO_TIME_OF_DAY(translate, locale);
+  };
+}
+
+export enum State {
+  ON = 0,
+  OFF = 1,
+  NO_DISCHARGE = 2,
+  FORCE_CHARGE = 3,
+  DISCONNECTED = 4,
+  CONNECTED = 5,
 }

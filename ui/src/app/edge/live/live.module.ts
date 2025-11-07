@@ -2,6 +2,7 @@ import { NgModule } from "@angular/core";
 import { BrowserModule } from "@angular/platform-browser";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { EdgeOfflineModule } from "src/app/shared/components/edge/offline/offline.module";
+import { HelpButtonComponent } from "src/app/shared/components/modal/help-button/help-button";
 import { ModalModule } from "src/app/shared/components/modal/modal.module";
 import { PullToRefreshComponent } from "src/app/shared/components/pull-to-refresh/pull-to-refresh";
 import { SharedModule } from "./../../shared/shared.module";
@@ -12,16 +13,19 @@ import { Common_Production } from "./common/production/Common_Production";
 import { Common_Selfconsumption } from "./common/selfconsumption/Common_Selfconsumption";
 import { StorageModalComponent } from "./common/storage/modal/modal.component";
 import { StorageComponent } from "./common/storage/storage.component";
+import { WeatherModule } from "./common/weather/weather.module";
 import { Controller_ChannelthresholdComponent } from "./Controller/Channelthreshold/Channelthreshold";
 import { Controller_ChpSocComponent } from "./Controller/ChpSoc/ChpSoc";
 import { Controller_ChpSocModalComponent } from "./Controller/ChpSoc/modal/modal.component";
+import { Controller_EnerixControl } from "./Controller/EnerixControl/EnerixControl";
 import { Controller_Ess_FixActivePower } from "./Controller/Ess/FixActivePower/Ess_FixActivePower";
 import { Controller_Ess_GridOptimizedCharge } from "./Controller/Ess/GridOptimizedCharge/Ess_GridOptimizedCharge";
 import { Controller_Ess_TimeOfUseTariff } from "./Controller/Ess/TimeOfUseTariff/Ess_TimeOfUseTariff";
 import { AdministrationComponent } from "./Controller/Evcs/administration/administration.component";
 import { Controller_Evcs } from "./Controller/Evcs/Evcs";
 import { ControllerEvseSingle } from "./Controller/Evse/EvseSingle.module";
-import { Controller_Io_ChannelSingleThresholdComponent } from "./Controller/Io/ChannelSingleThreshold/Io_ChannelSingleThreshold";
+import { ControllerHeat } from "./Controller/Heat/HeatMyPv";
+import { Controller_Io_ChannelSingleThresholdComponent } from "./Controller/Io/ChannelSingleThreshold/flat/flat";
 import { Controller_Io_ChannelSingleThresholdModalComponent } from "./Controller/Io/ChannelSingleThreshold/modal/modal.component";
 import { ControllerIoFixDigitalOutput } from "./Controller/Io/FixDigitalOutput/fix-digital-output.module";
 import { Controller_Io_HeatingElement } from "./Controller/Io/HeatingElement/Io_HeatingElement";
@@ -56,19 +60,23 @@ import { Evcs_Api_ClusterModalComponent } from "./Multiple/Evcs_Api_Cluster/moda
     Common_Production,
     Common_Selfconsumption,
     Controller_Api_ModbusTcp,
+    Controller_EnerixControl,
     Controller_Ess_FixActivePower,
     Controller_Ess_GridOptimizedCharge,
     Controller_Ess_TimeOfUseTariff,
     Controller_Evcs,
     ControllerEvseSingle,
+    ControllerHeat,
     Controller_Io_HeatingElement,
     Controller_Io_HeatingRoom,
     ControllerIoFixDigitalOutput,
     EdgeOfflineModule,
     EnergymonitorModule,
+    WeatherModule,
     ModalModule,
     SharedModule,
     PullToRefreshComponent,
+    HelpButtonComponent,
   ],
   declarations: [
     AdministrationComponent,

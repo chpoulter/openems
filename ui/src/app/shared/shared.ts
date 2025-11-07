@@ -4,20 +4,19 @@ export { Edge } from "./components/edge/edge";
 export { EdgeConfig } from "./components/edge/edgeconfig";
 export { Logger } from "./service/logger";
 export { Service } from "./service/service";
-export { Utils } from "./service/utils";
 export { Websocket } from "./service/websocket";
 export { ChannelAddress } from "./type/channeladdress";
 export { CurrentData } from "./type/currentdata";
 export { GridMode } from "./type/general";
 export { SystemLog } from "./type/systemlog";
 export { Widget, WidgetFactory, WidgetNature, Widgets } from "./type/widget";
-
+export { Utils } from "./utils/utils";
 import { AlertController, AlertOptions } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import { addIcons } from "ionicons";
 import { Edge } from "./components/edge/edge";
 import { User } from "./jsonrpc/shared";
-import { DefaultTypes } from "./service/defaulttypes";
+import { DefaultTypes } from "./type/defaulttypes";
 import { Role } from "./type/role";
 
 addIcons({
@@ -131,6 +130,17 @@ export class UserPermission {
     const isAllowed = edge?.isVersionAtLeast("2024.2.2");
     return Role.isAtLeast(user?.globalRole, Role.OWNER) && isAllowed;
   }
+
+  /**
+  * Checks if user is allowed to see additional updates.
+  *
+  * @param edge the current {@link Edge}
+  * @returns true, if user has access to see additional updates
+  */
+  public static isAllowedToSeeAdditionalUpdates(edge: Edge) {
+    return edge.isVersionAtLeast("2025.5.4") && edge.roleIsAtLeast(Role.ADMIN);
+  }
+
 }
 
 export enum Producttype {
@@ -205,6 +215,18 @@ export enum ChannelRegister {
   "SetReactivePowerGreaterOrEquals" = 716,
 }
 
+export enum RippleControlReceiverRestrictionLevel {
+  NO_RESTRICTION = 0,
+  ZERO_PERCENT = 1,
+  THIRTY_PERCENT = 2,
+  SIXTY_PERCENT = 3,
+}
+
+export enum Limiter14aRestriction {
+  NO_RESTRICTION = 0,
+  RESTRICTION = 1,
+}
+
 /**
 * Presents a simple
 */
@@ -217,7 +239,7 @@ export async function presentAlert(alertController: AlertController, translate: 
   const alert = alertController.create({
     ...alertOptions,
     buttons: [{
-      text: translate.instant("General.cancel"),
+      text: translate.instant("GENERAL.CANCEL"),
       role: "cancel",
     },
     ...(alertOptions?.buttons ?? []),

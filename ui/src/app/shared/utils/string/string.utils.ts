@@ -1,4 +1,3 @@
-
 export namespace StringUtils {
 
     export const INVALID_STRING = "Passed value is not of type string";
@@ -20,6 +19,17 @@ export namespace StringUtils {
      */
     export function isNotIn(val: string, arr: string[]): boolean {
         return arr.some(el => val != el);
+    }
+
+    /**
+     * Checks if the value does occur in array
+     *
+     * @param val the value
+     * @param arr the array
+     * @returns true if passed value is ocurring in the array
+     */
+    export function isIn(val: string, arr: string[]): boolean {
+        return arr.some(el => val == el);
     }
 
     /**

@@ -18,6 +18,7 @@ import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 import static java.time.temporal.ChronoField.NANO_OF_DAY;
 import static java.time.temporal.TemporalAdjusters.nextOrSame;
 import static java.util.Arrays.stream;
+import static java.util.Collections.emptyList;
 
 import java.time.DayOfWeek;
 import java.time.Duration;
@@ -116,7 +117,26 @@ public class JSCalendar<PAYLOAD> {
 			return fromStringOrEmpty(string, VOID_SERIALIZER);
 		}
 
-		public static record OneTask<PAYLOAD>(ZonedDateTime start, Duration duration, PAYLOAD payload) {
+		/**
+		 * Holds data of one task.
+		 * 
+		 * @param <PAYLOAD> the type of the Payload
+		 */
+		public static record OneTask<PAYLOAD>(ZonedDateTime start, Duration duration, ZonedDateTime end,
+				PAYLOAD payload) {
+
+			/**
+			 * Builds a {@link OneTask}.
+			 * 
+			 * @param <PAYLOAD> the type of the Payload
+			 * @param start     the start timestamp
+			 * @param duration  the {@link Duration}
+			 * @param payload   the Payload
+			 * @return the {@link OneTask}
+			 */
+			public static <PAYLOAD> OneTask<PAYLOAD> from(ZonedDateTime start, Duration duration, PAYLOAD payload) {
+				return new OneTask<PAYLOAD>(start, duration, duration == null ? null : start.plus(duration), payload);
+			}
 		}
 
 		/**
@@ -135,7 +155,7 @@ public class JSCalendar<PAYLOAD> {
 						var start = task.getNextOccurence(from);
 						return start == null //
 								? null //
-								: new OneTask<PAYLOAD>(start, task.duration, task.payload);
+								: OneTask.<PAYLOAD>from(start, task.duration, task.payload);
 					}) //
 					.filter(Objects::nonNull) //
 					.sorted((ot0, ot1) -> ot0.start().compareTo(ot1.start())) //
@@ -156,7 +176,7 @@ public class JSCalendar<PAYLOAD> {
 				ZonedDateTime from, ZonedDateTime to) {
 			return tasks.stream() //
 					.flatMap(t -> t.getOccurencesBetween(from, to).stream() //
-							.map(s -> new OneTask<PAYLOAD>(s, t.duration, t.payload))) //
+							.map(s -> OneTask.<PAYLOAD>from(s, t.duration, t.payload))) //
 					.sorted((ot0, ot1) -> ot0.start().compareTo(ot1.start())) //
 					.collect(toImmutableList());
 		}
@@ -194,8 +214,8 @@ public class JSCalendar<PAYLOAD> {
 						.setStart(json.getString("start")) //
 						.setDuration(json.getStringOrNull("duration")); //
 
-				json.getNullableJsonArrayPath("recurrenceRules")
-						.mapIfPresent(t -> t.getAsList(RecurrenceRule.serializer()))
+				json.getOptionalList("recurrenceRules", RecurrenceRule.serializer()) //
+						.orElse(emptyList()) //
 						.forEach(rr -> b.addRecurrenceRule(rr));
 
 				var payload = json.getObjectOrNull(PROPERTY_PAYLOAD, payloadSerializer);

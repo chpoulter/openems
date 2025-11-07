@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import io.openems.common.exceptions.OpenemsError.OpenemsNamedException;
 import io.openems.edge.common.component.AbstractOpenemsComponent;
+import io.openems.edge.common.component.ComponentManager;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.sum.Sum;
 import io.openems.edge.controller.api.Controller;
@@ -36,6 +37,9 @@ public class ControllerEvseClusterImpl extends AbstractOpenemsComponent
 		implements OpenemsComponent, ControllerEvseCluster, Controller {
 
 	private final Logger log = LoggerFactory.getLogger(ControllerEvseClusterImpl.class);
+
+	@Reference
+	private ComponentManager componentManager;
 
 	@Reference
 	private ConfigurationAdmin cm;
@@ -71,10 +75,14 @@ public class ControllerEvseClusterImpl extends AbstractOpenemsComponent
 
 	@Override
 	public void run() {
-		for (var result : calculate(this.config.distributionStrategy(), this.sum, this.ctrls, this::logDebug)) {
-			// Apply current & commands
-			result.ctrl().apply(result.actions());
-		}
+		calculate(this.componentManager.getClock(), this.config.distributionStrategy(), this.sum, this.ctrls,
+				this::logDebug) //
+				.streamEntries() //
+				.filter(e -> e.params.combinedAbilities().chargePointAbilities() != null) //
+				.forEach(e -> {
+					// Apply actions
+					e.ctrl.apply(e.actions.build());
+				});
 	}
 
 	protected void logDebug(String message) {

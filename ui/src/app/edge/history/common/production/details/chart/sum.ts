@@ -6,8 +6,8 @@ import { AbstractHistoryChart } from "src/app/shared/components/chart/abstracthi
 import { ChartConstants } from "src/app/shared/components/chart/chart.constants";
 import { Phase } from "src/app/shared/components/shared/phase";
 import { QueryHistoricTimeseriesEnergyResponse } from "src/app/shared/jsonrpc/response/queryHistoricTimeseriesEnergyResponse";
-import { ChartAxis, HistoryUtils, Utils, YAxisType } from "src/app/shared/service/utils";
 import { ChannelAddress, EdgeConfig } from "src/app/shared/shared";
+import { ChartAxis, HistoryUtils, Utils, YAxisType } from "src/app/shared/utils/utils";
 
 @Component({
   selector: "sumChart",
@@ -66,7 +66,7 @@ export class SumChartDetailsComponent extends AbstractHistoryChart {
       input: input,
       output: (data: HistoryUtils.ChannelData) => [
         {
-          name: translate.instant("General.TOTAL"),
+          name: translate.instant("GENERAL.TOTAL"),
           nameSuffix: (energyQueryResponse: QueryHistoricTimeseriesEnergyResponse) => energyQueryResponse.result.data["_sum/ProductionActiveEnergy"],
           converter: () => data[component.id],
           color: ChartConstants.Colors.BLUE,
@@ -77,7 +77,7 @@ export class SumChartDetailsComponent extends AbstractHistoryChart {
       ],
       tooltip: {
         formatNumber: "1.1-2",
-        afterTitle: translate.instant("General.TOTAL"),
+        afterTitle: translate.instant("GENERAL.TOTAL"),
       },
       yAxes: [{
         unit: YAxisType.ENERGY,

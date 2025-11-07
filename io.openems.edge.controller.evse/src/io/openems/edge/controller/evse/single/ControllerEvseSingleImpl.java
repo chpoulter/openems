@@ -1,12 +1,12 @@
 package io.openems.edge.controller.evse.single;
 
+import static io.openems.edge.common.channel.ChannelId.channelIdUpperToCamel;
 import static io.openems.edge.common.channel.ChannelUtils.setValue;
 import static io.openems.edge.common.event.EdgeEventConstants.TOPIC_CYCLE_AFTER_PROCESS_IMAGE;
 import static io.openems.edge.common.event.EdgeEventConstants.TOPIC_CYCLE_BEFORE_PROCESS_IMAGE;
 import static io.openems.edge.controller.evse.single.EnergyScheduler.buildManualEnergyScheduleHandler;
 import static io.openems.edge.controller.evse.single.EnergyScheduler.buildSmartEnergyScheduleHandler;
-import static io.openems.edge.controller.evse.single.Utils.getSessionLimitReached;
-import static io.openems.edge.controller.evse.single.Utils.mergeLimits;
+import static io.openems.edge.controller.evse.single.Utils.isSessionLimitReached;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import io.openems.common.exceptions.OpenemsError.OpenemsNamedException;
 import io.openems.edge.common.channel.value.Value;
 import io.openems.edge.common.component.AbstractOpenemsComponent;
+import io.openems.edge.common.component.ComponentManager;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.jsonapi.ComponentJsonApi;
 import io.openems.edge.common.jsonapi.JsonApiBuilder;
@@ -39,8 +40,10 @@ import io.openems.edge.controller.evse.single.EnergyScheduler.Config.SmartOptimi
 import io.openems.edge.controller.evse.single.EnergyScheduler.ScheduleContext;
 import io.openems.edge.controller.evse.single.EnergyScheduler.SmartOptimizationContext;
 import io.openems.edge.controller.evse.single.Types.History;
-import io.openems.edge.controller.evse.single.Types.Hysteresis;
 import io.openems.edge.controller.evse.single.jsonrpc.GetSchedule;
+import io.openems.edge.controller.evse.single.statemachine.Context;
+import io.openems.edge.controller.evse.single.statemachine.StateMachine;
+import io.openems.edge.controller.evse.single.statemachine.StateMachine.State;
 import io.openems.edge.energy.api.EnergySchedulable;
 import io.openems.edge.energy.api.handler.EnergyScheduleHandler;
 import io.openems.edge.energy.api.handler.EshWithDifferentModes;
@@ -65,8 +68,12 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 		EnergySchedulable, OpenemsComponent, ComponentJsonApi, EventHandler {
 
 	private final Logger log = LoggerFactory.getLogger(ControllerEvseSingleImpl.class);
+	private final StateMachine stateMachine = new StateMachine(State.UNDEFINED);
 	private final SessionEnergyHandler sessionEnergyHandler = new SessionEnergyHandler();
 	private final History history = new History();
+
+	@Reference
+	private ComponentManager componentManager;
 
 	@Reference
 	private ConfigurationAdmin cm;
@@ -96,13 +103,13 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 	}
 
 	@Activate
-	private void activate(ComponentContext context, Config config) throws OpenemsNamedException {
+	private void activate(ComponentContext context, Config config) {
 		super.activate(context, config.id(), config.alias(), config.enabled());
 		this.applyConfig(config);
 	}
 
 	@Modified
-	private void modified(ComponentContext context, Config config) throws OpenemsNamedException {
+	private void modified(ComponentContext context, Config config) {
 		super.modified(context, config.id(), config.alias(), config.enabled());
 		this.applyConfig(config);
 	}
@@ -127,7 +134,8 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 			this.manualEnergyScheduleHandler = null;
 			this.smartEnergyScheduleHandler = buildSmartEnergyScheduleHandler(this, //
 					() -> SmartOptimizationConfig.from(//
-							this.chargePoint.getChargeParams(), this.electricVehicle.getChargeParams(), //
+							this.chargePoint.getChargePointAbilities(), //
+							this.electricVehicle.getElectricVehicleAbilities(), //
 							this.history.getAppearsToBeFullyCharged(), //
 							config.smartConfig()));
 		}
@@ -137,7 +145,8 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 			this.manualEnergyScheduleHandler = buildManualEnergyScheduleHandler(this, //
 					() -> ManualOptimizationContext.from(//
 							config.mode().actual, //
-							this.chargePoint.getChargeParams(), this.electricVehicle.getChargeParams(), //
+							this.chargePoint.getChargePointAbilities(), //
+							this.electricVehicle.getElectricVehicleAbilities(), //
 							this.history.getAppearsToBeFullyCharged(), //
 							this.getSessionEnergy().orElse(0), //
 							config.manualEnergySessionLimit() > 0 //
@@ -148,6 +157,9 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 
 		// Listen on changes to 'isReadyForCharging'
 		this.chargePoint.getIsReadyForChargingChannel().onChange(this::onChargePointIsReadyForChargingChange);
+
+		// Reset StateMachine
+		this.stateMachine.forceNextState(State.UNDEFINED);
 	}
 
 	@Override
@@ -172,15 +184,14 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 
 	@Override
 	public Params getParams() {
-		// Handle Manual Energy Session Limit
-		final boolean sessionLimitReached = getSessionLimitReached(this.config.mode(), this.getSessionEnergy().get(),
-				this.config.manualEnergySessionLimit());
-		setValue(this, ControllerEvseSingle.ChannelId.SESSION_LIMIT_REACHED, sessionLimitReached);
+		final var state = this.stateMachine.getCurrentState();
+
+		final boolean isSessionLimitReached = state == State.FINISHED_ENERGY_SESSION_LIMIT;
 
 		// Evaluate Actual Mode
 		final var actualMode = switch (this.config.mode()) {
 		case ZERO, MINIMUM, SURPLUS, FORCE //
-			-> sessionLimitReached //
+			-> isSessionLimitReached //
 					? Mode.Actual.ZERO //
 					: this.config.mode().actual;
 
@@ -188,9 +199,12 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 			-> this.getSmartModeActual(Mode.Actual.ZERO);
 		};
 
-		final var chargePoint = this.chargePoint.getChargeParams();
+		final var chargePointAbilities = this.chargePoint.getChargePointAbilities();
 		final var activePower = this.chargePoint.getActivePower().get();
-		final var electricVehicle = this.electricVehicle.getChargeParams();
+		final var electricVehicleAbilities = this.electricVehicle.getElectricVehicleAbilities();
+		final var combinedAbilities = CombinedAbilities.createFrom(chargePointAbilities, electricVehicleAbilities) //
+				.setIsReadyForCharging(!isSessionLimitReached) //
+				.build();
 
 		// Set ACTUAL_MODE Channel. Always ZERO if there is no ActivePower
 		setValue(this, ControllerEvseSingle.ChannelId.ACTUAL_MODE, //
@@ -198,21 +212,7 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 						? Mode.Actual.ZERO //
 						: actualMode);
 
-		var limits = mergeLimits(chargePoint, electricVehicle);
-		if (limits == null) {
-			return null;
-		}
-
-		// Is Ready for Charging?
-		var isReadyForCharging = sessionLimitReached //
-				? false //
-				: chargePoint.isReadyForCharging();
-
-		var hysteresis = Hysteresis.from(this.history);
-		var appearsToBeFullyCharged = this.history.getAppearsToBeFullyCharged();
-
-		return new Params(isReadyForCharging, actualMode, activePower, limits, hysteresis, appearsToBeFullyCharged,
-				chargePoint.abilities());
+		return new Params(actualMode, activePower, this.history, this.config.phaseSwitching(), combinedAbilities);
 	}
 
 	@Override
@@ -221,10 +221,36 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 	}
 
 	@Override
-	public void apply(ChargePointActions actions) {
-		this.chargePoint.apply(actions);
+	public void apply(ChargePointActions input) {
+		final var state = this.stateMachine.getCurrentState();
+		setValue(this, ControllerEvseSingle.ChannelId.STATE_MACHINE, state);
 
-		this.history.addEntry(Instant.now(), this.chargePoint.getActivePower().get(), actions.applySetPoint().value());
+		// Force States
+		if (state != State.EV_NOT_CONNECTED && !input.abilities().isEvConnected()) {
+			this.stateMachine.forceNextState(State.EV_NOT_CONNECTED);
+		}
+		if (state != State.FINISHED_ENERGY_SESSION_LIMIT && isSessionLimitReached(this.config.mode(),
+				this.getSessionEnergy().get(), this.config.manualEnergySessionLimit())) {
+			this.stateMachine.forceNextState(State.FINISHED_ENERGY_SESSION_LIMIT);
+		}
+
+		try {
+			var context = new Context(this, input, this.chargePoint, this.history, (actions) -> {
+				// Callback: forward actions
+				this.chargePoint.apply(actions);
+				this.history.addEntry(Instant.now(this.componentManager.getClock()),
+						this.chargePoint.getActivePower().get(),
+						actions.abilities().applySetPoint().toPower(actions.applySetPoint().value()),
+						actions.abilities().isReadyForCharging());
+			});
+
+			this.stateMachine.run(context);
+			this._setRunFailed(false);
+
+		} catch (OpenemsNamedException e) {
+			this._setRunFailed(true);
+			this.logError(this.log, "StateMachine failed: " + e.getMessage());
+		}
 	}
 
 	@Override
@@ -252,10 +278,15 @@ public class ControllerEvseSingleImpl extends AbstractOpenemsComponent implement
 		return period.mode();
 	}
 
-	protected void logDebug(String message) {
-		if (this.config.debugMode()) {
-			this.logInfo(this.log, message);
-		}
+	@Override
+	public String debugLog() {
+		return switch (this.config.logVerbosity()) {
+		case NONE -> null;
+		case DEBUG_LOG -> new StringBuilder() //
+				.append("Mode:").append(channelIdUpperToCamel(this.config.mode().name())) //
+				.append("|").append(this.stateMachine.debugLog()) //
+				.toString();
+		};
 	}
 
 	@Override

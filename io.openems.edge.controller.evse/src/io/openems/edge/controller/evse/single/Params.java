@@ -1,19 +1,48 @@
 package io.openems.edge.controller.evse.single;
 
+import io.openems.edge.controller.evse.single.Types.History;
 import io.openems.edge.controller.evse.single.Types.Hysteresis;
-import io.openems.edge.evse.api.Limit;
 import io.openems.edge.evse.api.chargepoint.Mode;
-import io.openems.edge.evse.api.chargepoint.Profile.ChargePointAbilities;
 
+/**
+ * Parameters of one Evse.Controller.Single. Contains configuration settings,
+ * runtime parameters and CombinedAbilities of Charge-Point and
+ * Electric-Vehicle.
+ */
 public record Params(//
-		/** EV is ready for charging anytime. */
-		boolean isReadyForCharging, //
+		/**
+		 * Mode configuration of Evse.Controller.Single.
+		 */
 		Mode.Actual actualMode, //
-		/** The ActivePower value; possibly null */
+		/**
+		 * The measured ActivePower; possibly null.
+		 */
 		Integer activePower, //
-		Limit limit, //
+		/**
+		 * History data
+		 */
+		History history, //
+		/**
+		 * Hysteresis data
+		 */
 		Hysteresis hysteresis, //
-		/** EV appears to be fully charged. */
+		/**
+		 * PhaseSwitching configuration of Evse.Controller.Single.
+		 */
+		PhaseSwitching phaseSwitching, //
+		/**
+		 * EV appears to be fully charged.
+		 */
 		boolean appearsToBeFullyCharged, //
-		ChargePointAbilities abilities) {
+		/**
+		 * The CombinedAbilities of Charge-Point and Electric-Vehicle.
+		 */
+		CombinedAbilities combinedAbilities) {
+
+	public Params(Mode.Actual actualMode, Integer activePower, History history, PhaseSwitching phaseSwitching,
+			CombinedAbilities combinedAbilities) {
+		this(actualMode, activePower, history, Hysteresis.from(history), phaseSwitching,
+				history.getAppearsToBeFullyCharged(), combinedAbilities);
+	}
+
 }

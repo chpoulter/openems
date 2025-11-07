@@ -1,11 +1,12 @@
+import { CommonModule } from "@angular/common";
 import { CUSTOM_ELEMENTS_SCHEMA, NgModule } from "@angular/core";
-import { ReactiveFormsModule } from "@angular/forms";
-import { BrowserModule } from "@angular/platform-browser";
+import { FormsModule, ReactiveFormsModule } from "@angular/forms";
 import { RouterModule } from "@angular/router";
 import { IonicModule } from "@ionic/angular";
-import { TranslateModule } from "@ngx-translate/core";
 
-import { PipeModule } from "../../pipe/pipe";
+import { TranslateModule } from "@ngx-translate/core";
+import { PipeComponentsModule } from "../../pipe/pipe.module";
+import { OeImageComponent } from "../oe-img/oe-img";
 import { HelpButtonComponent } from "./help-button/help-button";
 import { HelpLinkComponent } from "./help-link/help-link";
 import { ModalComponent } from "./modal";
@@ -18,16 +19,8 @@ import { ModalValueLineComponent } from "./modal-value-line/modal-value-line";
 import { ModalHorizontalLineComponent } from "./model-horizontal-line/modal-horizontal-line";
 
 @NgModule({
-  imports: [
-    BrowserModule,
-    IonicModule,
-    ReactiveFormsModule,
-    RouterModule,
-    TranslateModule,
-    PipeModule,
-  ],
+  imports: [ReactiveFormsModule, FormsModule, IonicModule, CommonModule, PipeComponentsModule, TranslateModule, HelpButtonComponent, OeImageComponent],
   declarations: [
-    HelpButtonComponent,
     ModalButtonsComponent,
     ModalInfoLineComponent,
     ModalLineComponent,
@@ -36,11 +29,9 @@ import { ModalHorizontalLineComponent } from "./model-horizontal-line/modal-hori
     ModalLineItemComponent,
     ModalPhasesComponent,
     ModalValueLineComponent,
-    HelpButtonComponent,
     HelpLinkComponent,
   ],
   exports: [
-    HelpButtonComponent,
     ModalButtonsComponent,
     ModalInfoLineComponent,
     ModalLineComponent,
@@ -49,10 +40,28 @@ import { ModalHorizontalLineComponent } from "./model-horizontal-line/modal-hori
     ModalLineItemComponent,
     ModalPhasesComponent,
     ModalValueLineComponent,
-    HelpButtonComponent,
+    OeImageComponent,
     HelpLinkComponent,
   ],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
-
 })
+export class ModalComponentsModule { }
+@NgModule({
+  imports: [
+    CommonModule,
+    IonicModule,
+    ReactiveFormsModule,
+    RouterModule,
+    FormsModule,
+    TranslateModule,
+    PipeComponentsModule,
+    ModalComponentsModule,
+  ],
+  exports: [
+    ModalComponentsModule,
+  ],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+})
+
 export class ModalModule { }
+
