@@ -11,7 +11,6 @@ import static java.lang.Math.round;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.osgi.service.cm.ConfigurationAdmin;
@@ -219,10 +218,6 @@ public class EvcsClusterPeakShavingImpl extends AbstractOpenemsComponent impleme
 			return;
 		}
 		switch (event.getTopic()) {
-		case EdgeEventConstants.TOPIC_CYCLE_EXECUTE_WRITE:
-			this.updateChannels();
-			break;
-
 		case EdgeEventConstants.TOPIC_CYCLE_AFTER_CONTROLLERS:
 			this.calculateChannelValues();
 			this.limitEvcss();
@@ -230,20 +225,6 @@ public class EvcsClusterPeakShavingImpl extends AbstractOpenemsComponent impleme
 
 		default:
 			break;
-		}
-	}
-
-	private void updateChannels() {
-		Optional<Integer> maximumAllowedPowerToDistribute = this.getMaximumAllowedPowerToDistributeChannel()
-				.getNextWriteValueAndReset();
-		if (maximumAllowedPowerToDistribute.isPresent()) {
-
-			// We have to treat values below 0 as no limit and set channel to null.
-			// null cannot be transported over an optional in this case, as null
-			// means no new value.
-
-			int value = maximumAllowedPowerToDistribute.get();
-			setValue(this, ManagedEvcsCluster.ChannelId.MAXIMUM_ALLOWED_POWER_TO_DISTRIBUTE, value < 0 ? null : value);
 		}
 	}
 

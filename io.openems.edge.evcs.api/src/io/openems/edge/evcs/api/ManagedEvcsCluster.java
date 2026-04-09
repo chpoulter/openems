@@ -5,25 +5,26 @@ import org.osgi.annotation.versioning.ProviderType;
 import io.openems.common.channel.AccessMode;
 import io.openems.common.channel.PersistencePriority;
 import io.openems.common.channel.Unit;
-import io.openems.common.exceptions.OpenemsError.OpenemsNamedException;
 import io.openems.common.types.OpenemsType;
 import io.openems.edge.common.channel.Doc;
 import io.openems.edge.common.channel.IntegerReadChannel;
-import io.openems.edge.common.channel.IntegerWriteChannel;
 import io.openems.edge.common.channel.value.Value;
 
 @ProviderType
 public interface ManagedEvcsCluster extends Evcs {
 
 	public enum ChannelId implements io.openems.edge.common.channel.ChannelId {
-		MAXIMUM_ALLOWED_POWER_TO_DISTRIBUTE(Doc.of(OpenemsType.INTEGER)//
-				.unit(Unit.WATT)//
-				.persistencePriority(PersistencePriority.HIGH)//
-				.accessMode(AccessMode.READ_WRITE)//
+
+		MAXIMUM_ALLOWED_POWER_TO_DISTRIBUTE(Doc.of(OpenemsType.INTEGER) //
+				.unit(Unit.WATT) //
+				.persistencePriority(PersistencePriority.HIGH) //
+				.accessMode(AccessMode.READ_ONLY) //
 				.text("Maximum power allowed to distribute for all evcs in this cluster.")),
-		EVCS_COUNT(Doc.of(OpenemsType.INTEGER)//
-				.unit(Unit.NONE)//
-				.text("Connect EVCS on this cluster."));
+
+		EVCS_COUNT(Doc.of(OpenemsType.INTEGER) //
+				.unit(Unit.NONE) //
+				.text("Connect EVCS on this cluster.")),
+		;
 
 		private final Doc doc;
 
@@ -42,7 +43,7 @@ public interface ManagedEvcsCluster extends Evcs {
 	 *
 	 * @return the Channel
 	 */
-	public default IntegerWriteChannel getMaximumAllowedPowerToDistributeChannel() {
+	public default IntegerReadChannel getMaximumAllowedPowerToDistributeChannel() {
 		return this.channel(ChannelId.MAXIMUM_ALLOWED_POWER_TO_DISTRIBUTE);
 	}
 
@@ -57,14 +58,13 @@ public interface ManagedEvcsCluster extends Evcs {
 	}
 
 	/**
-	 * Sets maximum allowed power to distribute in [W] on
+	 * Internal method to set the 'nextValue' on
 	 * {@link ChannelId#MAXIMUM_ALLOWED_POWER_TO_DISTRIBUTE} Channel.
 	 *
 	 * @param value the next value
-	 * @throws OpenemsNamedException on error
 	 */
-	public default void setMaximumAllowedPowerToDistribute(Integer value) throws OpenemsNamedException {
-		this.getMaximumAllowedPowerToDistributeChannel().setNextWriteValue(value);
+	public default void _setMaximumAllowedPowerToDistribute(Integer value) {
+		this.getMaximumAllowedPowerToDistributeChannel().setNextValue(value);
 	}
 
 	/**
